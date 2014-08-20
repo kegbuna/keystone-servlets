@@ -1,5 +1,0 @@
-2013-01-18 00:50:16,193 com.liferay.portal.plugin.PluginPackageUtil INFO  plugin.PluginPackageUtil - Checking for available updates
-2013-01-18 00:50:16,206 com.liferay.portal.plugin.PluginPackageUtil INFO  plugin.PluginPackageUtil - Finished checking for available updates in 1 ms
-2013-01-18 18:19:39,958 liferay/scheduler_dispatch INFO  plugin.PluginPackageUtil - Reloading repositories
-2013-01-18 21:14:57,292 com.liferay.portal.plugin.PluginPackageUtil INFO  plugin.PluginPackageUtil - Checking for available updates
-2013-01-18 21:14:57,314 com.liferay.portal.plugin.PluginPackageUtil INFO  plugin.PluginPackageUtil - Finished checking for available updates in 18 ms
