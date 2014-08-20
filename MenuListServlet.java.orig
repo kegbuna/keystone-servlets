@@ -1,0 +1,174 @@
+/* KEYSTONE MENU LIST SERVLET  -------------------------------------------------------------
+   Author: Ryan Ahern
+   Date: MaY 31, 2012
+   
+   Returns data in name-value pairs for use in menus.
+   This servlet takes the following inputs:
+   + Form - The form from which to fetch data
+   + Qual - The qualification to use when fetching menu data
+   + NameId - The field ID that will be fetched for the menu name
+   + ValueId - The field ID that will be fetched for the menu value
+-------------------------------------------------------------------------------------------- */
+
+import java.io.IOException;
+import javax.servlet.*;
+import javax.servlet.http.*;
+import java.util.*;
+import com.bmc.arsys.api.*;
+
+import java.io.PrintWriter;
+import org.json.JSONObject;
+import org.json.JSONArray;
+
+public class MenuListServlet extends KeystoneServletBase {
+	// Constants ----------------------------------------------------------------------------------
+    private String FORM_NAME	    = "NONE";
+    private String QUALIFICATION    = "NONE";
+    private int MENU_NAME_ID		= 0;
+    private int MENU_VALUE_ID		= 0;
+    private List<Integer> FIELD_LIST= new ArrayList<Integer>();
+	
+	/* Enable this variable to see error messages */
+	private boolean DEBUG_ENABLED   = true;
+
+	public MenuListServlet() {
+		super();
+	}
+	
+	protected void doPost( HttpServletRequest request, HttpServletResponse response ) throws ServletException, IOException {
+		this.ClearParamMap();
+		this.GetProperties();
+        this.ParseParameters( request );
+		
+        FORM_NAME = this.GetParameter("Form");
+        QUALIFICATION = this.GetParameter("Qual");
+        MENU_NAME_ID = Integer.parseInt( this.GetParameter("NameId").replace("*", "") );
+        MENU_VALUE_ID = Integer.parseInt( this.GetParameter("ValueId").replace("*", "") );
+        
+        if ( !FORM_NAME.equals("NONE") ) {
+            this.GetMenuList( response );
+        	try {
+        		PrintWriter pwOut = response.getWriter();
+        	//pwOut.println("[ [\'USA\', \'United States\', \'United States of America\'], [\'JPN\', \'Japan\', \'Japan\'] ]" );
+        	
+        	
+	        	JSONObject json = new JSONObject();
+	        	JSONObject jsonAbbrev = new JSONObject();
+	        	jsonAbbrev.put( "abbrev", "USA" );
+	        	jsonAbbrev.put( "country", "United States of America" );
+	        	JSONArray jsonArray = new JSONArray();
+	        	jsonArray.put( jsonAbbrev );
+	        	json.put( "destinations", jsonArray );
+	        	pwOut.println( json.toString() );
+	        	pwOut.close();
+        	}
+        	catch ( Exception je ) {}
+        	
+        }
+        else {
+            PrintWriter pw = response.getWriter();
+            pw.println("Error: Servlet requires parameter \"Name\" to be provided.");
+            pw.close();
+        }
+	} 
+    
+    private void GetMenuList( HttpServletResponse response ) throws IOException {
+
+        /* Log into AR Server */
+        com.bmc.arsys.api.ARServerUser server = new com.bmc.arsys.api.ARServerUser();
+        server.setServer( this.GetConfig("server") );
+        server.setUser( this.GetConfig("username") );
+        server.setPassword( this.GetConfig("password") );
+
+        if ( !this.GetConfig("port").equals("") ) {
+            int port = Integer.parseInt( this.GetConfig("port") );
+            if ( port > 0 ) {
+                server.setPort( port );
+            }
+        }
+         
+        /* Check the config map to make sure there was not an error */
+        if ( !this.GetConfig("ERROR").equals("") ) {
+            PrintError( response, "Configuration Error: " + this.GetConfig("ERROR") );
+            server.logout();
+        }
+        else {
+            
+            try {
+                server.verifyUser();
+            
+            
+		        try {     
+		            OutputInteger nMatches = new OutputInteger();
+					List<SortInfo> sortOrder = new ArrayList<SortInfo>();
+					sortOrder.add(new SortInfo(1, Constants.AR_SORT_ASCENDING));
+					
+					
+		            String qualStr = "";
+		            QualifierInfo qual = server.parseQualification( FORM_NAME, qualStr );
+		            
+					int[] field_ids = {1,7,MENU_NAME_ID,MENU_VALUE_ID};
+					
+					//List<Entry> entryList = server.getListEntryObjects(FORM_NAME, qual, 0, Constants.AR_NO_MAX_LIST_RETRIEVE, sortOrder, field_ids, true, nMatches);
+					List<Entry> entryList = new ArrayList<Entry>();
+		            PrintWriter pw = response.getWriter();
+					if ( nMatches.intValue() > 0 ) {
+						
+					    //JSONArray jsonArray = new JSONArray();
+						String returnArray = "[ ";
+						int count = 0;
+						Iterator iter = entryList.iterator();
+		                while ( iter.hasNext() ) {
+		                	
+		                	if ( count > 0 ) {
+		                		returnArray += ",";
+		                	}
+		                	else {
+		                	
+		                    Entry entry = (Entry)iter.next();
+		                    returnArray += "[\'" + entry.get(MENU_VALUE_ID).toString() + "\',";
+		                    returnArray += "\'" + entry.get(MENU_NAME_ID).toString() + "\',";
+		                    returnArray += "\'test\'" + "]";
+		                	}
+		                    ++count;
+		                	
+		                    //JSONObject json = new JSONObject();
+		                    //json.put( "Name", entry.get(MENU_NAME_ID).toString() );
+		                    //json.put( "Value", entry.get(MENU_VALUE_ID).toString() );
+		                    
+		                    /* Add JSON object to Array */
+		                    //jsonArray.put( json );
+		                }
+		                
+		                returnArray += " ]";
+		                
+		                response.setContentType("text/javascript");
+		                pw.println( returnArray );
+		            }
+		            else {
+		                pw.println("Error: No entries found.");
+		            }
+		            pw.close();
+		            server.logout();
+		        }
+		        catch ( Exception e ) {
+		            if (DEBUG_ENABLED) {
+		                server.logout();
+		                
+		                try {
+		                    PrintWriter pw = response.getWriter();
+		                    pw.println("Error: " + e.getMessage() + this.GetConfig("server") + "," + this.GetConfig("username") +","+this.GetConfig("password"));
+		                    pw.close();
+		                }
+		                catch ( Exception ioe ) { }
+		            }
+		        }
+            }
+            catch (ARException e) {
+                PrintError( response, "[VerifyUser] " + e.getMessage() );
+                server.logout();
+            }
+        }
+    }
+    
+}

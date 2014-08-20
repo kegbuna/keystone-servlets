@@ -1,0 +1,188 @@
+/* KEYSTONE MENU LIST SERVLET  -------------------------------------------------------------
+   Author: Ryan Ahern
+   Date: MaY 31, 2012
+   
+   Returns data in name-value pairs for use in menus.
+   This servlet takes the following inputs:
+   + Form - The form from which to fetch data
+   + Qual - The qualification to use when fetching menu data
+   + NameId - The field ID that will be fetched for the menu name
+   + ValueId - The field ID that will be fetched for the menu value
+-------------------------------------------------------------------------------------------- */
+
+import java.io.IOException;
+import javax.servlet.*;
+import javax.servlet.http.*;
+import java.util.*;
+import com.bmc.arsys.api.*;
+
+import java.io.PrintWriter;
+import org.json.JSONObject;
+import org.json.JSONArray;
+
+public class MenuListServlet extends KeystoneServletBase {
+	// Constants ----------------------------------------------------------------------------------
+    private String FORM_NAME	    = "NONE";
+    private String QUALIFICATION    = "NONE";
+    private Integer MENU_NAME_ID	= 0;
+    private Integer MENU_VALUE_ID	= 0;
+    private List<Integer> FIELD_LIST= new ArrayList<Integer>();
+	
+	/* Enable this variable to see error messages */
+	private boolean DEBUG_ENABLED   = true;
+
+	public MenuListServlet() {
+		super();
+	}
+	
+	protected void doPost( HttpServletRequest request, HttpServletResponse response ) throws ServletException, IOException {
+		this.ClearParamMap();
+		this.GetProperties();
+        this.ParseParameters( request );
+		
+        String form = this.GetParameter("Form");
+        String qual = this.GetParameter("Qual");
+        Integer menu_name_id = Integer.parseInt( this.GetParameter("NameId").replace("*", "") );
+        Integer menu_value_id = Integer.parseInt( this.GetParameter("ValueId").replace("*", "") );
+        
+        if ( !form.equals("NONE") ) {
+            this.GetMenuList( response, form, menu_name_id, menu_value_id );
+        	//PrintWriter pw = response.getWriter();
+            //pw.println( BuildQualification() );
+            //pw.close();
+        }
+        else {
+            PrintWriter pw = response.getWriter();
+            pw.println("Error: Servlet requires parameter \"Name\" to be provided.");
+            pw.close();
+        }
+	} 
+    
+	private String BuildQualification( Integer menu_name_id ) {
+		String qual = "";
+		int count = 0;
+		Iterator it = GetParameterIterator();
+        while ( it.hasNext() ) {
+            Map.Entry param = (Map.Entry)it.next();
+            
+            /* If the parameter name is an integer, this means its a field meant for a qualification */
+            if ( (!param.getKey().toString().equals("Form")) && 
+                 (!param.getKey().toString().equals("NameId")) && 
+                 (!param.getKey().toString().equals("ValueId")) && 
+                 (!param.getKey().toString().equals("search")) ) {
+                if ( count > 0 ) {
+                	qual += " AND ";
+                }
+                qual += "(\'" + param.getKey().toString() + "\' = \"" + param.getValue().toString() + "\")";
+                ++count;
+            }
+            else if ( param.getKey().toString().equals("search") ) {
+            	/* Provide type-ahead searching */
+                String searchValue = param.getValue().toString();
+                if ( !searchValue.equals("NONE") && !searchValue.equals("*") ) {
+	            	if ( count > 0 ) {
+	                	qual += " AND ";
+	                }
+	            	qual += "(\'" + menu_name_id + "\' LIKE \"" + searchValue + "%\")"; 
+	            	++count;
+                }
+            }
+        }
+        return qual;
+	}
+	
+    private void GetMenuList( HttpServletResponse response, String form, Integer menu_name_id, Integer menu_value_id ) throws IOException {
+
+        /* Log into AR Server */
+        com.bmc.arsys.api.ARServerUser server = new com.bmc.arsys.api.ARServerUser();
+        server.setServer( this.GetConfig("server") );
+        server.setUser( this.GetConfig("username") );
+        server.setPassword( this.GetConfig("password") );
+
+        if ( !this.GetConfig("port").equals("") ) {
+            int port = Integer.parseInt( this.GetConfig("port") );
+            if ( port > 0 ) {
+                server.setPort( port );
+            }
+        }
+         
+        try {
+            
+            /* Check the config map to make sure there was not an error */
+            if ( !this.GetConfig("ERROR").equals("") ) {
+                PrintWriter pwConfig = response.getWriter();
+                pwConfig.println("Configuration Error: " + this.GetConfig("ERROR") );
+                pwConfig.close();
+            }
+            
+            OutputInteger nMatches = new OutputInteger();
+			List<SortInfo> sortOrder = new ArrayList<SortInfo>();
+			sortOrder.add(new SortInfo(1, Constants.AR_SORT_ASCENDING));
+			
+			//List<Field> form_fields = server.getListFieldObjects(form, Constants.AR_FIELD_TYPE_DATA);
+            
+            //String qualStr = "";
+			//String qualStr = "(\'" + MENU_VALUE_ID + "\' LIKE \"" + searchValue + "%\")"; 
+			//String qualStr = "(\'NAME\' LIKE \"" + searchValue + "%\")"; 
+			
+			QualifierInfo qual = server.parseQualification( form, BuildQualification(menu_name_id) );
+			int[] field_ids = null;
+			
+			if(form.equals("IBA:PRTL:CustomerProductCategoryType_Assoc")){
+				int[] fields = {1,7,menu_name_id.intValue(),menu_value_id.intValue(),1000000063,1000000064};
+				field_ids = fields;
+			}
+			else {
+				int[] fields = {1,7,menu_name_id.intValue(),menu_value_id.intValue()};
+				field_ids = fields;
+			}
+			
+			List<Entry> entryList = server.getListEntryObjects(form, qual, 0, Constants.AR_NO_MAX_LIST_RETRIEVE, sortOrder, field_ids, true, nMatches);
+			
+            PrintWriter pw = response.getWriter();
+			if ( nMatches.intValue() > 0 ) {
+				
+				JSONObject json = new JSONObject();
+				JSONArray jsonArray = new JSONArray();
+				
+				Iterator iter = entryList.iterator();
+                while ( iter.hasNext() ) {
+                	Entry entry = (Entry)iter.next();
+                    
+    	        	JSONObject jsonAbbrev = new JSONObject();
+    	        	jsonAbbrev.put( "value", entry.get(menu_value_id).toString());
+    	        	jsonAbbrev.put( "name", entry.get(menu_name_id).toString() );
+    	        	
+    	        	if(form.equals("IBA:PRTL:CustomerProductCategoryType_Assoc")){
+    	        		jsonAbbrev.put("opCat1", entry.get(1000000063).toString());
+    	        		jsonAbbrev.put("opCat2", entry.get(1000000064).toString());
+    	        	}
+    	        	
+    	        	jsonArray.put( jsonAbbrev );
+                }
+                
+                json.put( "items", jsonArray );
+	        	pw.println( json.toString() );
+                //pw.println( BuildQualification() );
+            }
+            else {
+                pw.println("Error: No menu entries found.");
+            }
+            pw.close();
+            server.logout();
+        }
+        catch ( Exception e ) {
+            if (DEBUG_ENABLED) {
+                server.logout();
+                
+                try {
+                    PrintWriter pw = response.getWriter();
+                    pw.println("[MenuListServlet] Error: " + e.getMessage() + " - " + this.GetConfig("server") + "," + this.GetConfig("username") +","+this.GetConfig("password"));
+                    pw.close();
+                }
+                catch ( Exception ioe ) { }
+            }
+        }
+    }
+    
+}
